@@ -1,6 +1,6 @@
 from openai import OpenAI
 import os
-from base_logger import logger
+from app_logger.base_logger import logger
 import json
 import re
 base_url = os.environ.get("BASE_URL")

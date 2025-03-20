@@ -6,7 +6,7 @@ from selenium.webdriver.common.by import By
 import time
 import subprocess
 import os
-from base_logger import logger
+from app_logger.base_logger import logger
 import random
 from selenium.common.exceptions import TimeoutException
 from utils.GPT import get_ai_response
@@ -35,13 +35,12 @@ def __get_description(wait):
             EC.presence_of_element_located((By.CLASS_NAME, "button.listing-detail-description__button"))
         )
         button.click()
-        print("Clicked the description button.")
+        logger.info("Clicked the description button.")
 
         description_elem = wait.until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div.listing-detail-description__additional"))
             )
-        print("Description content:\n\n")
-        print(description_elem.text)
+        logger.info(f"Description content:\n\n{description_elem.text}")
     except Exception as e:
         logger.error("Error getting description:", e)
         return None
@@ -90,7 +89,7 @@ def send_response(driver, url, price, AI_EVALUATE):
             if description:
                 # pass it to the ai
                 ai_response, reason = get_ai_response(description, price)
-                print(reason, "reason", "ai_response", ai_response)
+                logger.info(f"AI response: {ai_response},Reason: {reason}")
                 if not ai_response:
                     return False
         if __get_contact_agent(driver, wait):

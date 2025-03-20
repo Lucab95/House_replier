@@ -4,7 +4,7 @@ import sqlite3
 import datetime
 import dotenv
 import os
-from base_logger import logger
+from app_logger.base_logger import logger
 from utils.selenium_utils import send_response, launch_chrome_with_remote_debugging, attach_selenium_to_debugger
 import time
 COMMIT_DB = True
