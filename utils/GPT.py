@@ -18,8 +18,7 @@ def get_ai_response(user_input, price):
         {
             "role": "system",
             "content": """You are helping me to find a house. Criteria:
-            - For 2 people (at least 2 rooms), the price must be at most €750 per person.
-            - If price per person exceeds €750, consider adding a third person; then the price per person must be at most €700 (3 rooms).
+            - For 2 people (at least 2 bedrooms), the price must be maximum €750/800 per person, if it is more depends how much more it is. we can go to 1000 p.p., but only if it is a 3 bedroom house.
 
             Always reply with JSON:
             {
