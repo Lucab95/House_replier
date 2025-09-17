@@ -10,6 +10,13 @@ from app_logger.base_logger import logger
 import random
 from selenium.common.exceptions import TimeoutException
 from utils.GPT import get_ai_response
+import dotenv
+
+dotenv.load_dotenv()
+
+# Pararius login credentials
+PARARIUS_USERNAME = os.getenv("PARARIUS_USERNAME")
+PARARIUS_PASSWORD = os.getenv("PARARIUS_PASSWORD")
 
 failed = False
 
@@ -27,6 +34,58 @@ def attach_selenium_to_debugger():
     options = Options()
     options.debugger_address = "127.0.0.1:9222"
     driver = webdriver.Chrome(options=options)
+    
+    # Check if login is needed
+    try:
+        driver.get("https://www.pararius.com")
+        time.sleep(2)
+        
+        # Check for login indicator in the top navigation
+        login_elements = driver.find_elements(By.XPATH, "//a[contains(@href, 'login') or contains(text(), 'Login') or contains(text(), 'Sign in')]")
+        
+        if login_elements:
+            logger.info("Not logged in, attempting automatic login...")
+            
+            if not PARARIUS_USERNAME or not PARARIUS_PASSWORD:
+                logger.error("Pararius credentials not found in .env file")
+                return driver
+            
+            # Navigate to login page
+            driver.get("https://www.pararius.com/login-email")
+            time.sleep(3)
+            
+            try:
+                # Find and fill email field
+                email_field = driver.find_element(By.CSS_SELECTOR, "input[name='email']")
+                email_field.clear()
+                email_field.send_keys(PARARIUS_USERNAME)
+                
+                # Find and fill password field
+                password_field = driver.find_element(By.CSS_SELECTOR, "input[name='password']")
+                password_field.clear()
+                password_field.send_keys(PARARIUS_PASSWORD)
+                
+                # Click sign in button
+                sign_in_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+                sign_in_button.click()
+                
+                time.sleep(5)  # Wait for login to complete
+                
+                # Verify login was successful
+                login_check = driver.find_elements(By.XPATH, "//a[contains(@href, 'login') or contains(text(), 'Login') or contains(text(), 'Sign in')]")
+                if not login_check:
+                    logger.info("Successfully logged in via Selenium")
+                else:
+                    logger.error("Login appears to have failed")
+                    
+            except Exception as e:
+                logger.error(f"Error during login process: {e}")
+        else:
+            logger.info("Already logged in")
+            
+    except Exception as e:
+        logger.error(f"Error checking login status: {e}")
+    
     return driver
 
 def __get_description(wait):
@@ -42,7 +101,7 @@ def __get_description(wait):
             )
         logger.info(f"Description content:\n\n{description_elem.text}")
     except Exception as e:
-        logger.error("Error getting description:", e)
+        logger.error("Error getting description: %s", e)
         return None
     return description_elem.text
 
@@ -72,19 +131,16 @@ def __send_response_to_agent(driver, wait):
         logger.info("Clicked 'Send' button.")
         time.sleep(2)
         
-        # #check for the listing-reactions-counter__details
-        # reactions_counter = wait.until(
-        #     EC.presence_of_element_located((By.CSS_SELECTOR, "div.listing-reactions-counter__details"))
-        # )
-        # if reactions_counter is None:
-        #     logger.error("Reactions counter not found")
+       
 
 
 def send_response(driver, url, price, AI_EVALUATE):
     driver.get(url)
     wait = WebDriverWait(driver, 15)
     try:
+        logger.info("AI EVALUATE is: " + str(AI_EVALUATE))
         if AI_EVALUATE:
+            logger.info("AI EVALUATE is True")
             description = __get_description(wait)
             if description:
                 # pass it to the ai
@@ -96,11 +152,12 @@ def send_response(driver, url, price, AI_EVALUATE):
             #between 1 and 10 seconds
             time.sleep(random.randint(1, 10))
             
-            # __send_response_to_agent(driver, wait)
+            __send_response_to_agent(driver, wait)
             logger.info("Response sent successfully")
+            
             return True
         else:
             return False
     except Exception as e:
-        logger.error("Error occurred:", e)
+        logger.error("Error occurred: %s", e)
         return False
