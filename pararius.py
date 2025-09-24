@@ -14,6 +14,7 @@ COMMIT_DB = True
 SEND_TELEGRAM = True
 AI_EVALUATE = False
 USE_JSON_LD = True
+import random
 dotenv.load_dotenv()
 # URL to check
 # "https://www.huurwoningen.com/in/rotterdam/stadsdeel/centrum/?price=0-1500&bedrooms=2"
@@ -330,6 +331,12 @@ def send_telegram_message(token, chat_id, message):
 
 def main():
     while True:
+        # if before 07:00 sleep for 1 hour
+        if datetime.datetime.now().hour <= 7:
+            logger.info("Sleeping until %s", datetime.datetime.now() + datetime.timedelta(hours=1))
+            time.sleep(3600)
+            continue
+        
         conn = create_database()
         total_new_listings = []
         for pararius_url in PARARIUS_URL:
@@ -346,9 +353,10 @@ def main():
             new_listings = check_new_listings(conn, listings)
             if new_listings:
                 # add log to a file
-                
                 total_new_listings += new_listings
-        print(json.dumps(total_new_listings, indent=4)) #print(total_new_listings.)
+        if len(total_new_listings)>4:
+            print("Too many new listings, skipping beucase might be an error")
+            continue
         if total_new_listings:
             chrome_process = launch_chrome_with_remote_debugging()
             driver = attach_selenium_to_debugger()
@@ -360,6 +368,7 @@ def main():
                     line = f"Time found: {timestamp}, Title: {listing.get('title')}, Price: {listing.get('price')}, Location: {listing.get('location')}, Real Estate: {listing.get('real_estate')}, URL: {listing.get('url')}, Latitude: {listing.get('latitude')}, Longitude: {listing.get('longitude')}\n"
                     f.write(line)
                 if "pararius" in listing["url"]:
+                    # send_message = False
                     send_message = send_response(driver, listing["url"], listing["price"], AI_EVALUATE)
                     driver.get("https://www.google.com")
 
@@ -382,7 +391,8 @@ def main():
         else:
             logger.info(f"No new listings found")
         conn.close()
-        time.sleep(15)
+        #sleep random time between 20 and 30 seconds
+        time.sleep(random.randint(20, 50))
 
 if __name__ == "__main__":
     main()
