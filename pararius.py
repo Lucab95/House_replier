@@ -9,7 +9,13 @@ import re
 import html
 from urllib.parse import urlparse, urljoin
 from app_logger.base_logger import logger
-from utils.selenium_utils import send_response, launch_chrome_with_remote_debugging, attach_selenium_to_debugger
+from utils.selenium_utils import (
+    send_response,
+    launch_chrome_with_remote_debugging,
+    attach_selenium_to_debugger,
+    ensure_pararius_login,
+    ensure_huurwoningen_login,
+)
 import time
 COMMIT_DB = True
 SEND_TELEGRAM = True
@@ -393,24 +399,44 @@ def main():
         conn = create_database()
         total_new_listings = []
         for website_url in WEBSITE_URL:
-            logger.info("Fetching listings from %s", website_url)
+            print(f"Fetching listings from {website_url}")
             
             if USE_JSON_LD:
                 listings = fetch_listings_jsonld(website_url)
                 if not listings:
                     # Fallback to HTML if JSON-LD missing
                     listings = fetch_listings(website_url)
+            if len(listings) == 0:
+                logger.info("No listings found on website %s", website_url)
+                continue
+
             new_listings = check_new_listings(conn, listings)
             if new_listings:
                 # add log to a file
                 total_new_listings += new_listings
-                
+
         if len(total_new_listings)>4:
             print("Too many new listings, skipping beucase might be an error")
             continue
         if total_new_listings:
             chrome_process = launch_chrome_with_remote_debugging()
-            driver = attach_selenium_to_debugger()
+            driver = attach_selenium_to_debugger(auto_login=False)
+
+            hosts_to_login = set()
+            for listing in total_new_listings:
+                listing_url = listing.get("url") or ""
+                host = urlparse(listing_url).netloc.lower()
+                if host:
+                    hosts_to_login.add(host)
+
+            for host in hosts_to_login:
+                if "pararius.com" in host:
+                    ensure_pararius_login(driver)
+                elif "huurwoningen.com" in host:
+                    ensure_huurwoningen_login(driver)
+                else:
+                    logger.info("No automated login routine for host %s", host)
+
             for listing in total_new_listings:
                 # Add to a log file, open in append mode (create if doesn't exist)
                 log_file = "new_listings.log"
@@ -421,15 +447,15 @@ def main():
                 # Defaults to avoid undefined variables if url is not pararius
                 send_message = False
                 reason = "Not evaluated"
-                if "pararius" in listing["url"]:
-                    send_message, reason = send_response(driver, listing["url"], listing["price"], AI_EVALUATE)
-                    driver.get("https://www.google.com")
+                url = str(listing.get("url", ""))
+                parsed_listing_url = urlparse(url)
+                domain = parsed_listing_url.netloc.lower()
+                send_message, reason = send_response(driver, url, listing["price"], AI_EVALUATE, domain)
+                driver.get("https://www.google.com")
 
-                
                 title = str(listing.get("title", ""))
                 price = str(listing.get("price", ""))
                 real_estate = str(listing.get("real_estate", ""))
-                url = str(listing.get("url", ""))
                 # Make a human readable date string
                 raw_date = listing.get("date_added")
                 try:

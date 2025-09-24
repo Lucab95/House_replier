@@ -24,13 +24,11 @@ def get_ai_response(user_input, price, client):
         },
     ]
     user_input = f"{user_input}, The price is {price}"
-    logger.info(user_input)
     conversation.append({"role": "user", "content": user_input})
     response = client.chat.completions.create(
         model=model,
         messages=conversation,
     )
-    logger.info(response.choices[0].message.content)
     decision = False
     reason = None
     try:
