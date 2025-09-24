@@ -11,13 +11,20 @@ import random
 from selenium.common.exceptions import TimeoutException
 from utils.GPT import get_ai_response
 import dotenv
+from openai import OpenAI
+
 
 dotenv.load_dotenv()
 
 # Pararius login credentials
 PARARIUS_USERNAME = os.getenv("PARARIUS_USERNAME")
 PARARIUS_PASSWORD = os.getenv("PARARIUS_PASSWORD")
-
+BASE_URL = os.getenv("BASE_URL")
+API_KEY = os.getenv("OPENROUTER_API_KEY")
+client = OpenAI(
+        base_url=BASE_URL,
+        api_key=API_KEY,
+    )
 failed = False
 
 def launch_chrome_with_remote_debugging():
@@ -184,26 +191,26 @@ def __send_response_to_agent(driver, wait):
 def send_response(driver, url, price, AI_EVALUATE):
     driver.get(url)
     wait = WebDriverWait(driver, 15)
+    reason = "No ai involvement"
     try:
         logger.info("AI EVALUATE is: " + str(AI_EVALUATE))
         if AI_EVALUATE:
-            logger.info("AI EVALUATE is True")
             description = __get_description(wait)
             if description:
                 # pass it to the ai
-                ai_response, reason = get_ai_response(description, price)
-                logger.info(f"AI response: {ai_response},Reason: {reason}")
+                ai_response, reason = get_ai_response(description, price, client)
+                logger.info(f"AI response: {ai_response}, Reason: {reason}")
                 if not ai_response:
-                    return False
+                    return False, reason
         if __get_contact_agent(driver, wait):
             #between 1 and 10 seconds
             time.sleep(random.randint(1, 10))
             
             if __send_response_to_agent(driver, wait):
                 logger.info("Response sent successfully")
-                return True
-            return False
-        return False
+                return True, reason
+            return False, reason
+        return False, reason
     except Exception as e:
         logger.error("Error occurred: %s", e)
-        return False
+        return False, reason

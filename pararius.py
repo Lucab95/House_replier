@@ -6,20 +6,22 @@ import dotenv
 import os
 import json
 import re
-from urllib.parse import urlparse
+import html
+from urllib.parse import urlparse, urljoin
 from app_logger.base_logger import logger
 from utils.selenium_utils import send_response, launch_chrome_with_remote_debugging, attach_selenium_to_debugger
 import time
 COMMIT_DB = True
 SEND_TELEGRAM = True
-AI_EVALUATE = False
+AI_EVALUATE = True
 USE_JSON_LD = True
 import random
 dotenv.load_dotenv()
 # URL to check
 # "https://www.huurwoningen.com/in/rotterdam/stadsdeel/centrum/?price=0-1500&bedrooms=2"
-PARARIUS_URL = ["https://www.pararius.com/apartments/rotterdam/studio/0-1600",
-               "https://www.pararius.com/apartments/rotterdam/apartment/0-1600"]   
+PARARIUS_URL = ["https://www.pararius.com/apartments/rotterdam/0-1600/1-bedrooms"]
+HUURWONINGEN_URL = ["https://www.huurwoningen.com/in/rotterdam/?price=0-1600&bedrooms=1"]
+
 
 # Telegram settings (replace with your actual token and chat ID)    
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -169,6 +171,29 @@ def _extract_id_from_url(abs_url: str) -> str:
     return abs_url
 
 
+def _build_real_estate_map(soup, base_url):
+    """Build map of detail URL to real estate name from listing HTML."""
+    real_estate_map = {}
+    for section in soup.find_all("section", class_="listing-search-item"):
+        info_div = section.find("div", class_="listing-search-item__info")
+        if not info_div:
+            continue
+        agent_link = info_div.find("a", class_="listing-search-item__link", href=True)
+        if not agent_link:
+            continue
+        agent_name = agent_link.get_text(strip=True)
+        if not agent_name:
+            continue
+        title_link = section.find("a", class_="listing-search-item__link--title", href=True)
+        if not title_link:
+            title_link = section.find("a", class_="listing-search-item__link--depiction", href=True)
+        if not title_link:
+            continue
+        abs_detail_url = urljoin(base_url, title_link["href"])
+        real_estate_map[abs_detail_url] = agent_name
+    return real_estate_map
+
+
 def fetch_listings_jsonld(url):
     """Fetch listings using JSON-LD embedded on the search page (ItemList).
 
@@ -189,6 +214,9 @@ def fetch_listings_jsonld(url):
         return []
 
     soup = BeautifulSoup(response.content, "html.parser")
+    parsed_url = urlparse(url)
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    real_estate_map = _build_real_estate_map(soup, base_url)
     scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
     itemlist = None
     for s in scripts:
@@ -235,13 +263,26 @@ def fetch_listings_jsonld(url):
         except Exception:
             location = "No Location"
 
+        provider = item.get("provider") or item.get("seller") or offers.get("seller")
+        if isinstance(provider, dict):
+            real_estate = provider.get("name")
+        elif isinstance(provider, str):
+            real_estate = provider
+        else:
+            real_estate = None
+
+        if not real_estate:
+            real_estate = real_estate_map.get(abs_url)
+        if not real_estate:
+            real_estate = "None"
+
         listings.append({
             "id": listing_id,
             "title": title,
             "price": price_str,
             "location": location,
             "url": abs_url,
-            "real_estate": "None",
+            "real_estate": real_estate,
             "date_added": datetime.datetime.now().isoformat(),
         })
 
@@ -321,13 +362,17 @@ def send_telegram_message(token, chat_id, message):
     data = {
         "chat_id": chat_id,
         "text": message,
-        "parse_mode": "Markdown"
+        "disable_web_page_preview": False,
     }
     try:
         response = requests.post(url, data=data)
         response.raise_for_status()
     except requests.RequestException as e:
-        logger.error("Error sending Telegram message: %s", e) 
+        try:
+            resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else ''
+        except Exception:
+            resp_text = ''
+        logger.error("Error sending Telegram message: %s | Response: %s", e, resp_text) 
 
 def main():
     while True:
@@ -367,20 +412,51 @@ def main():
                     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     line = f"Time found: {timestamp}, Title: {listing.get('title')}, Price: {listing.get('price')}, Location: {listing.get('location')}, Real Estate: {listing.get('real_estate')}, URL: {listing.get('url')}, Latitude: {listing.get('latitude')}, Longitude: {listing.get('longitude')}\n"
                     f.write(line)
+                # Defaults to avoid undefined variables if url is not pararius
+                send_message = False
+                reason = "Not evaluated"
                 if "pararius" in listing["url"]:
-                    # send_message = False
-                    send_message = send_response(driver, listing["url"], listing["price"], AI_EVALUATE)
+                    send_message, reason = send_response(driver, listing["url"], listing["price"], AI_EVALUATE)
                     driver.get("https://www.google.com")
 
-                message = f"*New Listing Found!* *Title:* {listing['title']}, *Price:* {listing['price']}, *Location:* {listing['location']}, *Real Estate:* {listing['real_estate']}, [View Listing]({listing['url']}), *Date Added:* {listing['date_added']}, *Sent reply:* {send_message}"
-                title = str(listing["title"])
-                price = str(listing["price"])
-                real_estate = str(listing["real_estate"])
-                url = str(listing["url"])
-                printer = f"sent:{send_message} -- {title} -- {price} -- {real_estate} -- {url}"
                 
+                title = str(listing.get("title", ""))
+                price = str(listing.get("price", ""))
+                real_estate = str(listing.get("real_estate", ""))
+                url = str(listing.get("url", ""))
+                # Make a human readable date string
+                raw_date = listing.get("date_added")
+                try:
+                    if isinstance(raw_date, str):
+                        date_added = raw_date.replace("T", " ")[:19]
+                    else:
+                        date_added = raw_date.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    date_added = str(raw_date)
+
+                # Maps link (plain)
+                maps_html = ""
+                lat = listing.get("latitude")
+                lon = listing.get("longitude")
+                if lat is not None and lon is not None:
+                    maps_link = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+                    maps_html = f"\nMaps: {maps_link}"
+
+                printer = f"""sent: \n {send_message}\n {title}\n {price}\n{real_estate}\n {url}, reason: {reason}"""
+                message = (
+                        f"New Listing Found:\n"
+                        f"URL: {url}\n"
+                        f"Title: {title}\n"
+                        f"Price: {price}\n"
+                        f"Location: {listing.get('location', '')}{maps_html}\n"
+                        f"Agent: {real_estate}\n"
+                        f"Date: {date_added}\n"
+                        f"Sent reply: {send_message}\n"
+                        f"Reason: {reason}"
+                    )
                 logger.info(printer)
-            
+                print(message)
+                
                 if SEND_TELEGRAM:
                     send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
                 print("\n\n")
@@ -392,7 +468,7 @@ def main():
             logger.info(f"No new listings found")
         conn.close()
         #sleep random time between 20 and 30 seconds
-        time.sleep(random.randint(20, 50))
+        time.sleep(random.randint(15, 40))
 
 if __name__ == "__main__":
     main()

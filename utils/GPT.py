@@ -3,22 +3,17 @@ import os
 from app_logger.base_logger import logger
 import json
 import re
-base_url = os.environ.get("BASE_URL")
-model = os.environ.get("MODEL")
-api_key = os.getenv('OPENROUTER_API_KEY')
 
-def get_ai_response(user_input, price):
+def get_ai_response(user_input, price, client):
+    model = os.environ.get("MODEL", "x-ai/grok-4-fast:free")
 
-    client = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-    )
     # Personality
     conversation = [
         {
             "role": "system",
-            "content": """You are helping me to find a house. Criteria:
-            - For 2 people (at least 2 bedrooms), the price must be maximum €750/800 per person, if it is more depends how much more it is. we can go to 1000 p.p., but only if it is a 3 bedroom house.
+            "content": """You are helping me to find a house to rent. Criteria:
+            - The house is not for student
+            - The house is not for short term (less than 12 months)
 
             Always reply with JSON:
             {
@@ -36,6 +31,8 @@ def get_ai_response(user_input, price):
         messages=conversation,
     )
     logger.info(response.choices[0].message.content)
+    decision = False
+    reason = None
     try:
         json_content = re.sub(r'```(?:json)?\s*|\s*```', '', response.choices[0].message.content).strip()
         response_json = json.loads(json_content)
@@ -43,5 +40,4 @@ def get_ai_response(user_input, price):
         reason = response_json["reason"]
     except json.JSONDecodeError:
         logger.error("AI response is not valid JSON")
-        decision = None  # or handle differently
     return decision, reason
