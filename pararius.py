@@ -19,8 +19,9 @@ import random
 dotenv.load_dotenv()
 # URL to check
 # "https://www.huurwoningen.com/in/rotterdam/stadsdeel/centrum/?price=0-1500&bedrooms=2"
-PARARIUS_URL = ["https://www.pararius.com/apartments/rotterdam/0-1600/1-bedrooms"]
-HUURWONINGEN_URL = ["https://www.huurwoningen.com/in/rotterdam/?price=0-1600&bedrooms=1"]
+WEBSITE_URL = ["https://www.pararius.com/apartments/rotterdam/0-1600/1-bedrooms", 
+                "https://www.huurwoningen.com/in/rotterdam/?price=0-1600&bedrooms=1"]
+
 
 
 # Telegram settings (replace with your actual token and chat ID)    
@@ -163,12 +164,20 @@ def _extract_id_from_url(abs_url: str) -> str:
     """
     try:
         parsed = urlparse(abs_url)
-        parts = parsed.path.strip("/").split("/")
-        if len(parts) >= 3:
-            return parts[2]
+        remainder = parsed.path or ""
+        if parsed.params:
+            remainder += f";{parsed.params}"
+        if parsed.query:
+            remainder += f"?{parsed.query}"
+        if parsed.fragment:
+            remainder += f"#{parsed.fragment}"
+        remainder = remainder.lstrip("/")
+        if remainder:
+            return remainder
     except Exception:
         pass
-    return abs_url
+    # Fallback: if parsing fails, strip off any leading scheme and host
+    return abs_url.split("//", 1)[-1].split("/", 1)[-1]
 
 
 def _build_real_estate_map(soup, base_url):
@@ -231,7 +240,6 @@ def fetch_listings_jsonld(url):
             break
 
     if not itemlist:
-        logger.warning("No ItemList found in JSON-LD on page: %s", url)
         return []
 
     elements = itemlist.get("itemListElement") or []
@@ -377,28 +385,26 @@ def send_telegram_message(token, chat_id, message):
 def main():
     while True:
         # if before 07:00 sleep for 1 hour
-        if datetime.datetime.now().hour <= 7:
-            logger.info("Sleeping until %s", datetime.datetime.now() + datetime.timedelta(hours=1))
-            time.sleep(3600)
-            continue
+        # if datetime.datetime.now().hour <= 7:
+        #     logger.info("Sleeping until %s", datetime.datetime.now() + datetime.timedelta(hours=1))
+        #     time.sleep(3600)
+        #     continue
         
         conn = create_database()
         total_new_listings = []
-        for pararius_url in PARARIUS_URL:
+        for website_url in WEBSITE_URL:
+            logger.info("Fetching listings from %s", website_url)
+            
             if USE_JSON_LD:
-                listings = fetch_listings_jsonld(pararius_url)
+                listings = fetch_listings_jsonld(website_url)
                 if not listings:
                     # Fallback to HTML if JSON-LD missing
-
-                    listings = fetch_listings(pararius_url)
-            else:
-                listings = fetch_listings(pararius_url)
-            if not listings:
-                logger.error("No listings found or error fetching the page.")
+                    listings = fetch_listings(website_url)
             new_listings = check_new_listings(conn, listings)
             if new_listings:
                 # add log to a file
                 total_new_listings += new_listings
+                
         if len(total_new_listings)>4:
             print("Too many new listings, skipping beucase might be an error")
             continue
@@ -464,8 +470,7 @@ def main():
             chrome_process.terminate()
             chrome_process.wait()
             logger.info(f"{len(total_new_listings)} new listings sent to Telegram")
-        else:
-            logger.info(f"No new listings found")
+
         conn.close()
         #sleep random time between 20 and 30 seconds
         time.sleep(random.randint(15, 40))
