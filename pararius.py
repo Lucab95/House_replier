@@ -16,9 +16,11 @@ from utils.selenium_utils import (
     ensure_pararius_login,
     ensure_huurwoningen_login,
 )
+from utils.send_notifications import send_email, send_telegram_message
 import time
 COMMIT_DB = True
 SEND_TELEGRAM = True
+SEND_EMAIL = True
 AI_EVALUATE = True
 USE_JSON_LD = True
 import random
@@ -33,6 +35,7 @@ WEBSITE_URL = ["https://www.pararius.com/apartments/rotterdam/0-1600/1-bedrooms"
 # Telegram settings (replace with your actual token and chat ID)    
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+RECIPIENT_EMAILS = os.getenv("RECIPIENT_EMAILS")
 
 def create_database(db_name="listings.db"):
     """Creates/connects to a SQLite database and creates the listings table if it doesn't exist."""
@@ -370,24 +373,6 @@ def check_new_listings(conn, listings):
                     conn.commit()
     return new_listings
 
-def send_telegram_message(token, chat_id, message):
-    """Sends a message to a Telegram chat using a bot."""
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": message,
-        "disable_web_page_preview": False,
-    }
-    try:
-        response = requests.post(url, data=data)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        try:
-            resp_text = e.response.text if hasattr(e, 'response') and e.response is not None else ''
-        except Exception:
-            resp_text = ''
-        logger.error("Error sending Telegram message: %s | Response: %s", e, resp_text) 
-
 def main():
     while True:
         # if before 07:00 sleep for 1 hour
@@ -399,7 +384,7 @@ def main():
         conn = create_database()
         total_new_listings = []
         for website_url in WEBSITE_URL:
-            print(f"Fetching listings from {website_url}")
+            logger.info(f"Fetching listings from {website_url}")
             
             if USE_JSON_LD:
                 listings = fetch_listings_jsonld(website_url)
@@ -416,7 +401,7 @@ def main():
                 total_new_listings += new_listings
 
         if len(total_new_listings)>4:
-            print("Too many new listings, skipping beucase might be an error")
+            logger.info("Too many new listings, skipping beucase might be an error")
             continue
         if total_new_listings:
             chrome_process = launch_chrome_with_remote_debugging()
@@ -451,6 +436,7 @@ def main():
                 parsed_listing_url = urlparse(url)
                 domain = parsed_listing_url.netloc.lower()
                 send_message, reason = send_response(driver, url, listing["price"], AI_EVALUATE, domain)
+                
                 driver.get("https://www.google.com")
 
                 title = str(listing.get("title", ""))
@@ -490,8 +476,12 @@ def main():
                 print(message)
                 
                 if SEND_TELEGRAM:
-                    send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
-                print("\n\n")
+                    response = send_telegram_message(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, message)
+                    logger.info(f"Telegram {response}")
+                if SEND_EMAIL:
+                    logger.info("Sending email to %s", RECIPIENT_EMAILS)
+                    send_email(RECIPIENT_EMAILS, "New Listing Found", message, save_to_sent=False)
+                print("\n")
             driver.quit()
             chrome_process.terminate()
             chrome_process.wait()

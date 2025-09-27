@@ -179,7 +179,7 @@ def __get_description(wait,domain):
         button = wait.until(
                 EC.presence_of_element_located((By.CLASS_NAME, "button.listing-detail-description__button"))
             )
-        time.sleep(5)
+        time.sleep(2)
         button.click()
         logger.info("Clicked the description button.")
         
@@ -287,6 +287,25 @@ def __send_response_to_agent(driver, wait, domain):
         try:
             #check this
             if "pararius" in domain:
+                # Check for motivation textarea and fill if empty
+                try:
+                    textarea = driver.find_element(By.NAME, "contact_agent_huurprofiel_form[motivation]")
+                    if not textarea.get_attribute("value") and not textarea.text.strip():
+                        message = """Beste meneer/mevrouw,
+
+Graag willen wij, Eva (25) en Luca (30), onze interesse uitspreken in het huren van het appartement in Rotterdam.
+Luca is Scientific Software Engineer bij S&T (Delft) en Eva Floormanager bij Rotterdam Ahoy; samen hebben wij een vast bruto jaarinkomen van €77.000. 
+We zijn een rustig en netjes stel, zoeken een huurperiode van 12+ maanden, geen huisdieren, geen kinderen.
+We plannen graag een bezichtiging op elk moment dat u schikt, in persoon of online.
+
+Met vriendelijke groet,
+Eva & Luca"""
+                        textarea.send_keys(message)
+                        logger.info("Filled motivation textarea with predefined message")
+                        time.sleep(1)
+                except Exception as e:
+                    logger.info("Motivation textarea not found or couldn't be filled: %s", e)
+                
                 send_button = wait.until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "button.form__button--submit"))
                 )
@@ -322,6 +341,8 @@ def __send_response_to_agent(driver, wait, domain):
                             continue
                 if not send_button:
                     raise TimeoutException("Unable to locate Huurwoningen send button")
+
+            time.sleep(random.randint(1, 3))
             driver.execute_script("arguments[0].scrollIntoView(true);", send_button)
             driver.execute_script("arguments[0].click();", send_button)
             logger.info("Clicked 'Send' button.")
@@ -348,12 +369,12 @@ def send_response(driver, url, price, AI_EVALUATE, domain):
             if description:
                 # pass it to the ai
                 ai_response, reason = get_ai_response(description, price, client)
-                logger.info(f"AI response: {ai_response}, Reason: {reason}")
+                logger.info(f"AI response: {ai_response} \nReason: {reason}")
                 if not ai_response:
                     return False, reason
         if __get_contact_agent(driver, wait, domain):
             #between 1 and 10 seconds
-            time.sleep(random.randint(1, 10))
+            time.sleep(random.randint(1, 7))
             
             if __send_response_to_agent(driver, wait, domain):
                 logger.info("Response sent successfully")
