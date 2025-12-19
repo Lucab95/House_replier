@@ -20,15 +20,15 @@ from utils.send_notifications import send_email, send_telegram_message
 import time
 COMMIT_DB = True
 SEND_TELEGRAM = True
-SEND_EMAIL = True
+SEND_EMAIL = False
 AI_EVALUATE = True
 USE_JSON_LD = True
 import random
 dotenv.load_dotenv()
 # URL to check
 # "https://www.huurwoningen.com/in/rotterdam/stadsdeel/centrum/?price=0-1500&bedrooms=2"
-WEBSITE_URL = ["https://www.pararius.com/apartments/rotterdam/0-1600/1-bedrooms", 
-                "https://www.huurwoningen.com/in/rotterdam/?price=0-1600&bedrooms=1"]
+WEBSITE_URL = ["https://www.pararius.com/apartments/rotterdam/0-1300/1-bedrooms", 
+                "https://www.huurwoningen.com/in/rotterdam/?price=0-1300&bedrooms=1"]
 
 
 
@@ -435,7 +435,8 @@ def main():
                 url = str(listing.get("url", ""))
                 parsed_listing_url = urlparse(url)
                 domain = parsed_listing_url.netloc.lower()
-                send_message, reason = send_response(driver, url, listing["price"], AI_EVALUATE, domain)
+                lat_lon = (listing.get("latitude"), listing.get("longitude"))
+                send_message, reason = send_response(driver, url, listing["price"], AI_EVALUATE, domain, lat_lon)
                 
                 driver.get("https://www.google.com")
 

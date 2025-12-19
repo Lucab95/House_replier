@@ -291,15 +291,15 @@ def __send_response_to_agent(driver, wait, domain):
                 try:
                     textarea = driver.find_element(By.NAME, "contact_agent_huurprofiel_form[motivation]")
                     if not textarea.get_attribute("value") and not textarea.text.strip():
-                        message = """Beste meneer/mevrouw,
+                        message = """Geachte verhuurder,
 
-Graag willen wij, Eva (25) en Luca (30), onze interesse uitspreken in het huren van het appartement in Rotterdam.
-Luca is Scientific Software Engineer bij S&T (Delft) en Eva Floormanager bij Rotterdam Ahoy; samen hebben wij een vast bruto jaarinkomen van €77.000. 
-We zijn een rustig en netjes stel, zoeken een huurperiode van 12+ maanden, geen huisdieren, geen kinderen.
-We plannen graag een bezichtiging op elk moment dat u schikt, in persoon of online.
+Graag stellen wij ons kort aan u voor. Wij zijn Jaron (26) en Eva (24) een jong stel dat samen op zoek is naar een huurwoning in Rotterdam. Op dit moment wonen wij in Tilburg waar wij al enige tijd samenwonen in een kleine studio. Al langere tijd voelen wij ons aangetrokken tot de Randstad en met name tot Rotterdam vanwege de levendigheid, de gezellige sfeer en het moderne karakter van de stad. Nu wij beiden een nieuwe vaste baan als psycholoog hebben gevonden in Rotterdam voelt dit voor ons als het juiste moment om de stap te zetten een huurwoning in Rotterdam te gaan zoeken. Totaal verdienen we samen +/- 5000 euro per maand bruto. We zijn daarom op zoek naar een net appartement in een rustige prettige buurt waar we met plezier kunnen wonen. Zelf zijn we ook een rustig stel die belang hechten aan een nette leefomgeving. We hebben geen huisdieren en zouden per direct kunnen verhuizen.
+
+Hopelijk kan uw huurwoning ons nieuwe thuis worden in deze volgende fase van ons leven. 
 
 Met vriendelijke groet,
-Eva & Luca"""
+
+Jaron en Evaa"""
                         textarea.send_keys(message)
                         logger.info("Filled motivation textarea with predefined message")
                         time.sleep(1)
@@ -342,7 +342,7 @@ Eva & Luca"""
                 if not send_button:
                     raise TimeoutException("Unable to locate Huurwoningen send button")
 
-            time.sleep(random.randint(1, 3))
+            time.sleep(random.randint(10, 20))
             driver.execute_script("arguments[0].scrollIntoView(true);", send_button)
             driver.execute_script("arguments[0].click();", send_button)
             logger.info("Clicked 'Send' button.")
@@ -358,7 +358,7 @@ Eva & Luca"""
        
 
 
-def send_response(driver, url, price, AI_EVALUATE, domain):
+def send_response(driver, url, price, AI_EVALUATE, domain, lat_lon):
     driver.get(url)
     wait = WebDriverWait(driver, 15)
     reason = "No ai involvement"
@@ -368,13 +368,13 @@ def send_response(driver, url, price, AI_EVALUATE, domain):
             description = __get_description(wait, domain)
             if description:
                 # pass it to the ai
-                ai_response, reason = get_ai_response(description, price, client)
+                ai_response, reason = get_ai_response(description, price, client, lat_lon)
                 logger.info(f"AI response: {ai_response} \nReason: {reason}")
                 if not ai_response:
                     return False, reason
         if __get_contact_agent(driver, wait, domain):
             #between 1 and 10 seconds
-            time.sleep(random.randint(1, 7))
+            time.sleep(random.randint(1, 3))
             
             if __send_response_to_agent(driver, wait, domain):
                 logger.info("Response sent successfully")

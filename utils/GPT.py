@@ -4,7 +4,7 @@ from app_logger.base_logger import logger
 import json
 import re
 
-def get_ai_response(user_input, price, client):
+def get_ai_response(user_input, price, client, lat_lon=None):
     model = os.environ.get("MODEL", "x-ai/grok-4-fast:free")
 
     # Personality
@@ -13,7 +13,8 @@ def get_ai_response(user_input, price, client):
             "role": "system",
             "content": """You are helping me to find a house to rent. Criteria:
             - The house is not for student
-            - The house is not for short term (less than 12 months)
+            - The house is can be for short term but minimum of 1 year, if not specified is ok
+            - A none lat lon for the location is ok, but i prefer center, north and blijdorp
 
             Always reply with JSON:
             {
@@ -23,7 +24,9 @@ def get_ai_response(user_input, price, client):
             """,
         },
     ]
-    user_input = f"{user_input}, The price is {price}"
+    user_input = f"{user_input}, The price is {price} and the location is {lat_lon}"
+    print("-" * 50)
+    print(user_input)
     conversation.append({"role": "user", "content": user_input})
     response = client.chat.completions.create(
         model=model,
